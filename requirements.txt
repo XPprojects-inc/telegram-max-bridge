@@ -1,0 +1,4 @@
+maxapi-python @ https://github.com/MaxApiTeam/PyMax/archive/53103f0c8df32f36110cbe0bcbfc3ad82173808a.zip
+aiohttp==3.14.4
+qrcode==8.2
+pillow==12.3.0
