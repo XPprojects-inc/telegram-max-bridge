@@ -23,7 +23,7 @@ import qrcode
 import bridge as core
 from controller import Controller, friendly_error, protect_token
 
-VERSION = '3.1.0'
+VERSION = '3.1.1'
 
 
 class EventLog(logging.Handler):

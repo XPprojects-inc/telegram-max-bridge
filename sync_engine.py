@@ -213,7 +213,8 @@ class SyncEngine:
         if target_mid:
             if mapped_row is not row:
                 self.queue('poll_notice', target_side, target_mid, {})
-            result_body = result if isinstance(result, dict) else result.model_dump(mode='json')
+            from bridge import max_snapshot
+            result_body = result if isinstance(result, dict) else max_snapshot(result)
             peer_poll = self.extract_poll(target_side, result_body)
             if peer_poll:
                 self.register_poll(target_side, target_mid, peer_poll, True)
@@ -490,7 +491,8 @@ class SyncEngine:
                 try:
                     msg = await self.b.mx.client.get_message(self.chat('max'), int(row['mid']))
                     if msg:
-                        poll = self.extract_poll('max', msg.model_dump(mode='json'))
+                        from bridge import max_snapshot
+                        poll = self.extract_poll('max', max_snapshot(msg))
                         if poll:
                             self.register_poll('max', row['mid'], poll, True)
                 except Exception as exc:

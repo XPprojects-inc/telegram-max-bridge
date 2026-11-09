@@ -29,6 +29,18 @@ LOG = logging.getLogger("bridge")
 MAX_BYTES = 20 * 1024 * 1024
 
 
+def max_snapshot(message):
+    """Persist message metadata without binary thumbnails (not UTF-8 text)."""
+    def clean(value):
+        if isinstance(value, dict):
+            return {key: clean(item) for key, item in value.items()
+                    if key not in ('preview_data', 'previewData')}
+        if isinstance(value, (list, tuple)):
+            return [clean(item) for item in value]
+        return value
+    return clean(message.model_dump(mode='python'))
+
+
 def chunks(text, limit=3000):
     # Telegram limits are in UTF-16 units. Never split a Unicode code point.
     part, size = [], 0
@@ -339,13 +351,13 @@ class Bridge:
             self.sync.deleted('max', message.id)
             return
         if message.status == 'EDITED':
-            self.sync.edited('max', message.id, message.model_dump(mode='json'))
+            self.sync.edited('max', message.id, max_snapshot(message))
             return
         if self.store.is_echo(message, self.own_id):
             return
         if not message.text and all(a.type in {"CONTROL", "CALL"} for a in message.attaches):
             return
-        data = message.model_dump(mode='json')
+        data = max_snapshot(message)
         self.sync.remember('max', message.id, data)
         self.store.add("max", message.chat_id, message.id, data, self.route)
 
@@ -570,7 +582,7 @@ class MultiBridge:
     def max_edit(self, message):
         route = self.by_max.get(message.chat_id)
         if route:
-            route.sync.edited('max', message.id, message.model_dump(mode='json'))
+            route.sync.edited('max', message.id, max_snapshot(message))
 
     def max_delete(self, event):
         route = self.by_max.get(event.chat_id)

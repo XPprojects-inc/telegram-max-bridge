@@ -10,6 +10,40 @@ class ImageTests(unittest.IsolatedAsyncioTestCase):
     tearDown = fixtures.SyncTests.tearDown
     job = fixtures.SyncTests.job
 
+    async def test_binary_preview_survives_ingestion_and_relay(self):
+        photo = dict(_type='PHOTO', baseUrl='https://example.org/a.jpg', width=10,
+                     height=10, photoId=1, photoToken='test', previewData=b'\xff\xd8\x80')
+        message = mx(text='Фото', attaches=[photo])
+        with self.assertRaises(UnicodeDecodeError):
+            message.model_dump(mode='json')
+        self.b.ingest_max(message)
+        self.mx.media = AsyncMock(return_value=('photo', 'photo.jpg', b'original'))
+        await self.b.relay(self.job('max'))
+        self.assertEqual(self.tg.send.await_args.args[2][2], b'original')
+        self.assertEqual(message.attaches[0].preview_data, b'\xff\xd8\x80')
+
+    async def test_history_binary_preview_does_not_block_following_messages(self):
+        photo = dict(_type='PHOTO', baseUrl='https://example.org/a.jpg', width=10,
+                     height=10, photoId=1, photoToken='test', previewData=b'\xff\x80')
+        self.mx.client.fetch_history = AsyncMock(side_effect=[[mx(1, attaches=[photo]), mx(2)], []])
+        import asyncio
+        async def stop(_):
+            raise asyncio.CancelledError
+        with patch('bridge.asyncio.sleep', side_effect=stop):
+            with self.assertRaises(asyncio.CancelledError):
+                await self.b.catch_up()
+        self.assertIsNotNone(self.job('max', 1))
+        self.assertIsNotNone(self.job('max', 2))
+        self.assertIsNotNone(self.store.get('max_scan_time:' + self.b.route))
+
+    def test_nested_reply_preview_removed_without_changing_text(self):
+        from types import SimpleNamespace
+        model = SimpleNamespace(model_dump=lambda **kw: {'text': 'Привет 😀', 'link': {
+            'message': {'attaches': [{'preview_data': b'\xff', 'base_url': 'https://example.org/a'}]}}})
+        data = core.max_snapshot(model)
+        self.assertEqual(data['text'], 'Привет 😀')
+        self.assertNotIn('preview_data', data['link']['message']['attaches'][0])
+
     async def test_photo_rejection_falls_back_to_original_file(self):
         adapter = core.Telegram('unused', None)
         adapter.call = AsyncMock(side_effect=[core.TelegramError(400, description='PHOTO_INVALID_DIMENSIONS'), {'message_id': 2}])
